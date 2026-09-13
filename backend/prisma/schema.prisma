@@ -11,3 +11,25 @@ model Healthcheck {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 }
+
+model Proveedor {
+  id                     String          @id @default(uuid())
+  nombre                 String
+  contactoNombre         String?
+  email                  String?
+  telefono               String?
+  condicionesComerciales String?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  mapeo                  MapeoProveedor?
+}
+
+model MapeoProveedor {
+  id             String    @id @default(uuid())
+  proveedorId    String    @unique
+  proveedor      Proveedor @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+  filaInicioData Int       @default(2)
+  colDescripcion String
+  colPrecio      String
+  colBulto       String?
+}

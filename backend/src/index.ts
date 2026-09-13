@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
+import proveedorRoutes from './routes/proveedor.routes';
 
 dotenv.config();
 
@@ -12,25 +13,27 @@ const PORT = process.env.PORT || 4000;
 app.use(cors());
 app.use(express.json());
 
-// Endpoint de prueba de salud y conexión SQL
+// Endpoint del healthcheck y conexión SQL
 app.get('/healthcheck', async (req, res) => {
-  try {
+try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({
-      status: 'ok',
-      message: 'Servidor Backend operativo',
-      database: 'Conectado exitosamente a PostgreSQL',
-      timestamp: new Date()
+        status: 'ok',
+        message: 'Servidor Backend operativo',
+        database: 'Conectado exitosamente a PostgreSQL',
+        timestamp: new Date()
     });
-  } catch (error) {
+} catch (error) {
     res.status(500).json({
-      status: 'error',
-      message: 'Error al conectar con la base de datos',
-      error: (error as Error).message
+        status: 'error',
+        message: 'Error al conectar con la base de datos',
+        error: (error as Error).message
     });
-  }
+    }
 });
 
+app.use('/api/proveedores', proveedorRoutes); // proveedores y mapeo
+
 app.listen(PORT, () => {
-  console.log(`🚀 Backend ejecutándose en http://localhost:${PORT}`);
+console.log(`🚀 Backend ejecutándose en http://localhost:${PORT}`);
 });
