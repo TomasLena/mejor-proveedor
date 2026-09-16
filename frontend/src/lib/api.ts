@@ -18,6 +18,18 @@ export interface Proveedor {
     mapeo?: Mapeo | null;
 }
 
+export interface ProductoExtraido {
+    descripcion: string;
+    precio: number;
+    bulto?: number | null;
+}
+
+export interface RespuestaExcel {
+    proveedor: string;
+    totalLeidos: number;
+    productos: ProductoExtraido[];
+}
+
 export async function getProveedores(): Promise<Proveedor[]> {
     const res = await fetch(`${API_URL}/proveedores`);
     if (!res.ok) throw new Error('Error al obtener proveedores');
@@ -41,5 +53,22 @@ export async function guardarMapeo(proveedorId: string, data: Mapeo): Promise<Ma
         body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Error al guardar el mapeo');
+    return res.json();
+}
+
+export async function cargarListaExcel(proveedorId: string, archivo: File): Promise<RespuestaExcel> {
+    const formData = new FormData();
+    formData.append('archivo', archivo);
+
+    const res = await fetch(`${API_URL}/proveedores/${proveedorId}/cargar-lista`, {
+        method: 'POST',
+        body: formData,
+    });
+
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al procesar el archivo Excel');
+    }
+
     return res.json();
 }
