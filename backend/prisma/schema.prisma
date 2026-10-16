@@ -1,15 +1,10 @@
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
 generator client {
   provider = "prisma-client-js"
 }
 
-model Healthcheck {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Proveedor {
@@ -19,9 +14,10 @@ model Proveedor {
   email                  String?
   telefono               String?
   condicionesComerciales String?
+  mapeo                  MapeoProveedor?
+  listas                 ListaPrecio[]
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
-  mapeo                  MapeoProveedor?
 }
 
 model MapeoProveedor {
@@ -32,4 +28,21 @@ model MapeoProveedor {
   colDescripcion String
   colPrecio      String
   colBulto       String?
+}
+
+model ListaPrecio {
+  id          String     @id @default(uuid())
+  proveedorId String
+  proveedor   Proveedor  @relation(fields: [proveedorId], references: [id], onDelete: Cascade)
+  fechaCarga  DateTime   @default(now())
+  productos   Producto[]
+}
+
+model Producto {
+  id            String      @id @default(uuid())
+  listaPrecioId String
+  listaPrecio   ListaPrecio @relation(fields: [listaPrecioId], references: [id], onDelete: Cascade)
+  descripcion   String
+  precio        Float
+  bulto         Int?
 }

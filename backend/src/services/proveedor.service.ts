@@ -36,4 +36,15 @@ export interface CrearProveedorDTO {
         create: { ...data, proveedorId },
         });
     }
+
+static async eliminar(id: string) {
+
+    return await prisma.proveedor.delete({
+        where: { id }
+    });
+    }
+
+
 }
+
+

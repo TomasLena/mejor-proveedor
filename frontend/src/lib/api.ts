@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:4000/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 
 export interface Mapeo {
     id?: string;
@@ -70,5 +70,41 @@ export async function cargarListaExcel(proveedorId: string, archivo: File): Prom
         throw new Error(errorData.error || 'Error al procesar el archivo Excel');
     }
 
+    
+
+    return res.json();
+}
+
+
+    export async function guardarListaConfirmada(proveedorId: string, productos: any[]) {
+        const res = await fetch(`${API_URL}/proveedores/${proveedorId}/guardar-lista`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ productos }),
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || 'Error al guardar la lista en la base de datos');
+        }
+
+        return res.json();
+        }
+
+    export async function buscarComparacion(query: string) {
+        const res = await fetch(`${API_URL}/comparar?q=${encodeURIComponent(query)}`);
+        if (!res.ok) {
+            throw new Error('Error al realizar la búsqueda de comparación');
+        }
+        return res.json();
+        }
+
+        export async function eliminarProveedor(id: string) {
+    const res = await fetch(`${API_URL}/proveedores/${id}`, {
+        method: 'DELETE',
+    });
+    if (!res.ok) {
+        throw new Error('Error al eliminar el proveedor');
+    }
     return res.json();
 }

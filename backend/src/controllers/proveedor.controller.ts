@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { ProveedorService } from '../services/proveedor.service';
 import { PrismaClient } from '@prisma/client';
 import { ExcelService } from '../services/excel.service';
+import { ListaService } from '../services/lista.service';
 
 const prisma = new PrismaClient();
 
@@ -13,6 +14,9 @@ const prisma = new PrismaClient();
         } catch (error) {
         res.status(500).json({ error: (error as Error).message });
         }
+        
+
+    
     }
 
     static async crear(req: Request, res: Response) {
@@ -69,6 +73,37 @@ const prisma = new PrismaClient();
         return res.status(500).json({ error: (error as Error).message });
         }
     }
+    static async guardarListaConfirmada(req: Request, res: Response) {
+        try {
+        const { id } = req.params;
+        const { productos } = req.body;
 
+        if (!productos || !Array.isArray(productos) || productos.length === 0) {
+            return res.status(400).json({ error: 'No hay productos para guardar en la lista.' });
+        }
+
+        const listaGuardada = await ListaService.guardarLista(id as string, productos);
+
+        return res.status(201).json({
+            mensaje: 'Lista de precios guardada correctamente en la base de datos',
+            listaId: listaGuardada.id,
+            totalGuardados: listaGuardada._count.productos,
+        });
+        } catch (error) {
+        return res.status(500).json({ error: (error as Error).message });
+        }
+    }
+
+    static async eliminar(req: Request, res: Response) {
+    try {
+        const { id } = req.params;
+        
+        await ProveedorService.eliminar(id as string);
+        
+        return res.json({ mensaje: 'Proveedor eliminado correctamente' });
+        } catch (error) {
+        return res.status(500).json({ error: (error as Error).message });
+        }
+    }
 
 }
