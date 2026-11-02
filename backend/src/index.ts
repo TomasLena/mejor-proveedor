@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 import proveedorRoutes from './routes/proveedor.routes';
 import comparadorRoutes from './routes/comparador.routes';
+import pedidosRoutes from './routes/pedidos.routes';
+import productoRoutes from './routes/producto.routes';
 
 dotenv.config();
 
@@ -35,8 +37,9 @@ try {
     }
 });
 
-app.use('/api/proveedores', proveedorRoutes); // proveedores y mapeo
-
+app.use('/api/proveedores', proveedorRoutes); 
+app.use('/api/pedidos', pedidosRoutes);
+app.use('/api/productos', productoRoutes);
 app.use('/api/comparar', comparadorRoutes);
 
 app.listen(PORT, () => {

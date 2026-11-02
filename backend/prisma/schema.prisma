@@ -45,4 +45,31 @@ model Producto {
   descripcion   String
   precio        Float
   bulto         Int?
+  detalles      DetallePedido[]
+}
+
+model Equivalencia {
+  id                   String   @id @default(uuid())
+  descripcionProveedor String   @unique 
+  descripcionMaster    String   
+  createdAt            DateTime @default(now())
+}
+
+model Pedido {
+  id          String          @id @default(uuid())
+  fecha       DateTime        @default(now())
+  estado      String          @default("GENERADO")
+  total       Float
+  detalles    DetallePedido[]
+}
+
+model DetallePedido {
+  id          String   @id @default(uuid())
+  pedidoId    String
+  pedido      Pedido   @relation(fields: [pedidoId], references: [id], onDelete: Cascade)
+  productoId  String
+  producto    Producto @relation(fields: [productoId], references: [id])
+  cantidad    Int
+  precioUnit  Float
+  subtotal    Float
 }
