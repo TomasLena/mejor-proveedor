@@ -8,6 +8,7 @@ function normalizarTexto(str: string): string {
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
     }
 
@@ -42,94 +43,150 @@ function normalizarTexto(str: string): string {
 
     export class ComparadorService {
     static async buscarYComparar(query: string) {
-        if (!query || query.trim().length === 0) return [];
+    if (!query || query.trim().length === 0) return [];
 
-        const queryNormalizada = normalizarTexto(query);
-        const empaqueQuery = extraerEmpaque(query);
-        const palabrasClave = queryNormalizada.split(/\s+/).filter((t) => t.length > 1);
+    const queryNormalizada = normalizarTexto(query);
+    const empaqueQuery = extraerEmpaque(query);
+    const palabrasClave = queryNormalizada.split(/\s+/).filter((t) => t.length > 1);
 
-        if (palabrasClave.length === 0) return [];
+    if (palabrasClave.length === 0) return [];
 
-        const productosBD = await prisma.producto.findMany({
+    const equivalencias = await prisma.equivalencia.findMany();
+    const mapaEquivalencias = new Map<string, string>();
+    equivalencias.forEach((eq) => {
+        mapaEquivalencias.set(eq.descripcionProveedor, eq.descripcionMaster);
+    });
+
+    const descripcionesHomologadasCoincidentes = equivalencias
+        .filter((eq) =>
+        palabrasClave.some((palabra) => normalizarTexto(eq.descripcionMaster).includes(palabra))
+        )
+        .map((eq) => eq.descripcionProveedor);
+
+    const productosBD = await prisma.producto.findMany({
         where: {
-            OR: palabrasClave.map((palabra) => ({
-            descripcion: { contains: palabra, mode: 'insensitive' },
+        OR: [
+            ...palabrasClave.map((palabra) => ({
+            descripcion: { contains: palabra, mode: 'insensitive' as const },
             })),
+            { descripcion: { in: descripcionesHomologadasCoincidentes } },
+        ],
         },
         include: {
-            listaPrecio: { include: { proveedor: true } },
+        listaPrecio: { include: { proveedor: true } },
         },
-        });
+    });
 
-        const ahora = new Date();
+    const ahora = new Date();
 
-        const productosEvaluados = productosBD
+    const productosEvaluados = productosBD
         .map((p) => {
-            const descripcionNormalizada = normalizarTexto(p.descripcion);
-            const empaqueProducto = extraerEmpaque(p.descripcion);
+        const descripcionCanonica = mapaEquivalencias.get(p.descripcion) || p.descripcion;
+        const descripcionNormalizada = normalizarTexto(descripcionCanonica);
+        const empaqueProducto = extraerEmpaque(descripcionCanonica);
 
-            let porcentajeSimilitud = calcularSimilitudLevenshtein(queryNormalizada, descripcionNormalizada);
-            const regexMatchOk = empaqueQuery === empaqueProducto;
+        let porcentajeSimilitud = calcularSimilitudLevenshtein(queryNormalizada, descripcionNormalizada);
+        const regexMatchOk = empaqueQuery === empaqueProducto;
 
-            // RN03
-            if (empaqueQuery && empaqueProducto && !regexMatchOk && porcentajeSimilitud >= 85) {
+        if (empaqueQuery && empaqueProducto && !regexMatchOk && porcentajeSimilitud >= 85) {
             porcentajeSimilitud = 84;
-            }
+        }
 
-            const fechaCarga = new Date(p.listaPrecio.fechaCarga);
-            const diasAntiguedad = Math.floor((ahora.getTime() - fechaCarga.getTime()) / (1000 * 60 * 60 * 24));
+        const fechaCarga = new Date(p.listaPrecio.fechaCarga);
+        const diasAntiguedad = Math.floor((ahora.getTime() - fechaCarga.getTime()) / (1000 * 60 * 60 * 24));
 
-            let semaforo: 'VERDE' | 'AMARILLO' | 'ROJO' = 'VERDE';
-            if (diasAntiguedad > 60) semaforo = 'ROJO';
-            else if (diasAntiguedad > 30) semaforo = 'AMARILLO';
+        let semaforo: 'VERDE' | 'AMARILLO' | 'ROJO' = 'VERDE';
+        if (diasAntiguedad > 60) semaforo = 'ROJO';
+        else if (diasAntiguedad > 30) semaforo = 'AMARILLO';
 
-            return {
+        return {
             id: p.id,
-            descripcion: p.descripcion,
+            descripcion: descripcionCanonica, 
+            descripcionOriginal: p.descripcion, 
             precio: p.precio,
             bulto: p.bulto,
             fechaCarga: p.listaPrecio.fechaCarga,
             diasAntiguedad,
             semaforo,
             proveedor: {
-                id: p.listaPrecio.proveedor.id,
-                nombre: p.listaPrecio.proveedor.nombre,
+            id: p.listaPrecio.proveedor.id,
+            nombre: p.listaPrecio.proveedor.nombre,
             },
             similitud: Math.round(porcentajeSimilitud),
             regexMatchOk,
-            };
+        };
         })
-        .filter((p) => p.similitud >= 50); // RN04: Descarta <50%
+        .filter((p) => p.similitud >= 50);
 
-        return productosEvaluados;
-    }
+    return productosEvaluados;
+}
 
     static async obtenerPendientes() {
-        const equivalencias = await prisma.equivalencia.findMany();
-        const descripcionesHomologadas = new Set(equivalencias.map((e) => e.descripcionProveedor));
+    const equivalencias = await prisma.equivalencia.findMany();
+    const descripcionesHomologadas = new Set(equivalencias.map((e) => e.descripcionProveedor));
 
-        const productosBD = await prisma.producto.findMany({
+    const productosBD = await prisma.producto.findMany({
         include: {
             listaPrecio: {
             include: { proveedor: true },
             },
         },
-        take: 50,
         });
 
-        const pendientes = productosBD
-        .filter((p) => !descripcionesHomologadas.has(p.descripcion))
-        .map((p) => ({
-            id: p.id,
-            descripcionProveedor: p.descripcion,
-            codigoProveedor: p.id.substring(0, 8).toUpperCase(),
-            proveedorNombre: p.listaPrecio.proveedor.nombre,
-            descripcionMaster: p.descripcion,
-            skuMaster: `SKU-${p.id.substring(0, 4).toUpperCase()}`,
+        if (productosBD.length === 0) return [];
+
+        const proveedoresIds = Array.from(new Set(productosBD.map((p) => p.listaPrecio.proveedor.id)));
+        if (proveedoresIds.length < 2) return [];
+
+        const proveedorMaestroId = proveedoresIds[0];
+        const productosMaestros = productosBD.filter((p) => p.listaPrecio.proveedor.id === proveedorMaestroId);
+        
+        const productosSecundarios = productosBD.filter(
+        (p) => p.listaPrecio.proveedor.id !== proveedorMaestroId && !descripcionesHomologadas.has(p.descripcion)
+        );
+
+        const pendientes: any[] = [];
+
+        for (const prodSec of productosSecundarios) {
+        const descSecNorm = normalizarTexto(prodSec.descripcion);
+        const empaqueSec = extraerEmpaque(prodSec.descripcion);
+
+        let mejorCandidato: typeof productosMaestros[0] | null = null;
+        let mejorSimilitud = 0;
+
+        for (const prodMaster of productosMaestros) {
+            const descMasterNorm = normalizarTexto(prodMaster.descripcion);
+            const empaqueMaster = extraerEmpaque(prodMaster.descripcion);
+
+            if (empaqueSec && empaqueMaster && empaqueSec !== empaqueMaster) {
+            continue;
+            }
+
+            const sim = calcularSimilitudLevenshtein(descSecNorm, descMasterNorm);
+
+            if (sim > mejorSimilitud) {
+            mejorSimilitud = sim;
+            mejorCandidato = prodMaster;
+            }
+        }
+
+        // funcionamiento
+        // Si la mejor similitud es >= 85%, se considera Auto-Match (se saltea).
+        // Solo entra a la Consola Manual si la mejor coincidencia está entre 50% y 84%.
+        if (mejorCandidato && mejorSimilitud >= 50 && mejorSimilitud <= 84) {
+            pendientes.push({
+            id: prodSec.id,
+            descripcionProveedor: prodSec.descripcion,
+            codigoProveedor: prodSec.id.substring(0, 8).toUpperCase(),
+            proveedorNombre: prodSec.listaPrecio.proveedor.nombre,
+            descripcionMaster: mejorCandidato.descripcion,
+            skuMaster: `SKU-${mejorCandidato.id.substring(0, 4).toUpperCase()}`,
             rubro: 'General',
-            similitud: 78,
+            similitud: Math.round(mejorSimilitud),
             regexMatchOk: true,
-        }));
+            });
+        }
+        }
 
         return pendientes;
     }

@@ -40,7 +40,7 @@ try {
 app.use('/api/proveedores', proveedorRoutes); 
 app.use('/api/pedidos', pedidosRoutes);
 app.use('/api/productos', productoRoutes);
-app.use('/api/comparar', comparadorRoutes);
+app.use('/api/comparador', comparadorRoutes);
 
 app.listen(PORT, () => {
 console.log(`🚀 Backend ejecutándose en http://localhost:${PORT}`);

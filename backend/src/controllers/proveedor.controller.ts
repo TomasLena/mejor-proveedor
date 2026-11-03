@@ -39,39 +39,41 @@ const prisma = new PrismaClient();
     }
 
     static async cargarListaExcel(req: Request, res: Response) {
-    try {
-        const { id } = req.params;
+        try {
+            const { id } = req.params;
 
-        if (!req.file) {
+            if (!req.file) {
             return res.status(400).json({ error: 'Debe adjuntar un archivo de Excel (.xlsx o .xls)' });
-        }
+            }
 
-        // Buscar el proveedor y su mapeo
-        const proveedor = await prisma.proveedor.findUnique({
+            const proveedor = await prisma.proveedor.findUnique({
             where: { id: id as string },
             include: { mapeo: true },
-        });
-
-        if (!proveedor) {
-            return res.status(404).json({ error: 'Proveedor no encontrado' });
-        }
-
-        if (!proveedor.mapeo) {
-            return res.status(400).json({
-            error: 'El proveedor no tiene configurado un mapeo de columnas. Por favor configúrelo antes de subir la lista.',
             });
-        }
 
-        const productos = ExcelService.procesarExcel(req.file.buffer, proveedor.mapeo);
+            if (!proveedor || !proveedor.mapeo) {
+            return res.status(400).json({
+                error: 'El proveedor no tiene un mapeo de columnas configurado.',
+            });
+            }
 
-        return res.json({
+            const productos = ExcelService.procesarExcel(req.file.buffer, proveedor.mapeo);
+
+            if (productos.length === 0) {
+            return res.status(400).json({ error: 'No se encontraron productos válidos con el mapeo actual.' });
+            }
+
+            const listaGuardada = await ListaService.guardarLista(id as string, productos);
+
+            return res.status(201).json({
             proveedor: proveedor.nombre,
             totalLeidos: productos.length,
-            productos,
-        });
+            listaId: listaGuardada.id,
+            mensaje: 'Lista cargada e insertada correctamente en PostgreSQL',
+            });
         } catch (error) {
-        return res.status(500).json({ error: (error as Error).message });
-        }
+            return res.status(500).json({ error: (error as Error).message });
+    }
     }
     static async guardarListaConfirmada(req: Request, res: Response) {
         try {
@@ -105,5 +107,17 @@ const prisma = new PrismaClient();
         return res.status(500).json({ error: (error as Error).message });
         }
     }
+
+    static async previsualizarExcel(req: Request, res: Response) {
+    try {
+        if (!req.file) {
+        return res.status(400).json({ error: 'Debe adjuntar un archivo de Excel' });
+        }
+        const filas = ExcelService.obtenerPrevisualizacion(req.file.buffer);
+        return res.json({ filas });
+    } catch (error) {
+        return res.status(500).json({ error: (error as Error).message });
+    }
+}
 
 }

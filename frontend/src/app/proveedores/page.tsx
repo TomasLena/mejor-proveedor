@@ -1,257 +1,674 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import {
-  getProveedores, crearProveedor, guardarMapeo, cargarListaExcel, guardarListaConfirmada, eliminarProveedor,
-  Proveedor, ProductoExtraido,
-} from '@/lib/api';
-import {
-  Building2, Settings2, Plus, CheckCircle2, FileSpreadsheet,
-  User, Phone, Mail, Upload, FileUp, Table, Database, Trash2,
-} from 'lucide-react';
+import { useState, useEffect } from "react";
+
+interface Proveedor {
+  id: string;
+  nombre: string;
+  contactoNombre?: string;
+  email?: string;
+  telefono?: string;
+  cuit?: string;
+}
 
 export default function ProveedoresPage() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modalAbierto, setModalAbierto] = useState(false);
+  const [cargando, setCargando] = useState(true);
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState<"Todos" | "Vigentes" | "Vencidos">("Todos");
+
   const [proveedorSeleccionado, setProveedorSeleccionado] = useState<Proveedor | null>(null);
+  const [vista, setVista] = useState<"directorio" | "mapeo">("directorio");
 
-  const [nombre, setNombre] = useState('');
-  const [contactoNombre, setContactoNombre] = useState('');
-  const [email, setEmail] = useState('');
-  const [telefono, setTelefono] = useState('');
-  const [condicionesComerciales, setCondicionesComerciales] = useState('');
+  // Estados del Modal Crear Proveedor
+  const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
+  const [nuevoNombre, setNuevoNombre] = useState("");
+  const [nuevoCuit, setNuevoCuit] = useState("");
+  const [nuevoContacto, setNuevoContacto] = useState("");
+  const [nuevoEmail, setNuevoEmail] = useState("");
+  const [nuevoTelefono, setNuevoTelefono] = useState("");
+  const [creandoProveedor, setCreandoProveedor] = useState(false);
 
-  const [filaInicioData, setFilaInicioData] = useState(2);
-  const [colDescripcion, setColDescripcion] = useState('A');
-  const [colPrecio, setColPrecio] = useState('B');
-  const [colBulto, setColBulto] = useState('C');
+  // Estados del Mapeador (PANT-04)
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [filaInicio, setFilaInicio] = useState(2);
+  const [colDescripcion, setColDescripcion] = useState("B");
+  const [colPrecio, setColPrecio] = useState("C");
+  const [colBulto, setColBulto] = useState("D");
+  const [guardandoMapeo, setGuardandoMapeo] = useState(false);
+  const [cargandoPreview, setCargandoPreview] = useState(false);
 
-  const [modalExcelAbierto, setModalExcelAbierto] = useState(false);
-  const [proveedorSubida, setProveedorSubida] = useState<Proveedor | null>(null);
-  const [archivoExcel, setArchivoExcel] = useState<File | null>(null);
-  const [cargandoExcel, setCargandoExcel] = useState(false);
-  const [productosProcesados, setProductosProcesados] = useState<ProductoExtraido[]>([]);
-  const [resumenProcesado, setResumenProcesado] = useState<{ proveedor: string; total: number } | null>(null);
+  // Matriz de filas reales devueltas por el backend al subir archivo
+  const [filasRaw, setFilasRaw] = useState<any[][]>([]);
 
-  const [guardandoBD, setGuardandoBD] = useState(false);
+  useEffect(() => {
+    fetchProveedores();
+  }, []);
 
-  const cargarProveedores = async () => {
+  const fetchProveedores = async () => {
     try {
-      const data = await getProveedores();
-      setProveedores(data);
-    } catch (err) {
-      console.error(err);
+      const res = await fetch("http://localhost:4000/api/proveedores");
+      if (res.ok) {
+        const data = await res.json();
+        setProveedores(data);
+      }
+    } catch (error) {
+      console.error("Error al cargar proveedores:", error);
     } finally {
-      setLoading(false);
+      setCargando(false);
     }
   };
-
-  useEffect(() => { cargarProveedores(); }, []);
 
   const handleCrearProveedor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nombre) return;
+    if (!nuevoNombre.trim()) return alert("El nombre del proveedor es obligatorio");
+
+    setCreandoProveedor(true);
     try {
-      await crearProveedor({ nombre, contactoNombre, email, telefono, condicionesComerciales });
-      setNombre(''); setContactoNombre(''); setEmail(''); setTelefono(''); setCondicionesComerciales('');
-      setModalAbierto(false); cargarProveedores();
-    } catch (err) { alert('Error al crear el proveedor'); }
-  };
-
-  const handleEliminarProveedor = async (id: string, nombreProv: string) => {
-    if (window.confirm(`¿Estás seguro de que deseas eliminar permanentemente al proveedor "${nombreProv}" y todos sus datos?`)) {
-      try {
-        await eliminarProveedor(id);
-        cargarProveedores();
-      } catch (err) {
-        alert('Error al eliminar el proveedor. Verifica que no existan dependencias en la base de datos.');
-      }
-    }
-  };
-
-  const abrirConfiguracionMapeo = (p: Proveedor) => {
-    setProveedorSeleccionado(p);
-    if (p.mapeo) {
-      setFilaInicioData(p.mapeo.filaInicioData || 2);
-      setColDescripcion(p.mapeo.colDescripcion || 'A');
-      setColPrecio(p.mapeo.colPrecio || 'B');
-      setColBulto(p.mapeo.colBulto || 'C');
-    }
-  };
-
-  const handleGuardarMapeo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!proveedorSeleccionado) return;
-    try {
-      await guardarMapeo(proveedorSeleccionado.id, {
-        filaInicioData: Number(filaInicioData), colDescripcion, colPrecio, colBulto,
+      const res = await fetch("http://localhost:4000/api/proveedores", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: nuevoNombre,
+          cuit: nuevoCuit || null,
+          contactoNombre: nuevoContacto || null,
+          email: nuevoEmail || null,
+          telefono: nuevoTelefono || null,
+        }),
       });
-      setProveedorSeleccionado(null); cargarProveedores();
-    } catch (err) { alert('Error al guardar la configuración de mapeo'); }
+
+      if (res.ok) {
+        const nuevoProv = await res.json();
+        setProveedores((prev) => [...prev, nuevoProv]);
+        alert("¡Proveedor registrado con éxito!");
+        setNuevoNombre("");
+        setNuevoCuit("");
+        setNuevoContacto("");
+        setNuevoEmail("");
+        setNuevoTelefono("");
+        setMostrarModalCrear(false);
+      } else {
+        const errorData = await res.json();
+        alert(`Error al registrar: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error de conexión al registrar proveedor.");
+    } finally {
+      setCreandoProveedor(false);
+    }
   };
 
-  const abrirModalSubida = (p: Proveedor) => {
-    setProveedorSubida(p); setArchivoExcel(null); setModalExcelAbierto(true);
+  const handleEliminarProveedor = async (id: string, nombre: string) => {
+    if (!confirm(`¿Estás seguro de eliminar el proveedor "${nombre}"? Se borrarán sus listas asociadas.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:4000/api/proveedores/${id}`, {
+        method: "DELETE",
+      });
+
+      if (res.ok) {
+        setProveedores((prev) => prev.filter((p) => p.id !== id));
+        alert("Proveedor eliminado correctamente.");
+      } else {
+        const errorData = await res.json();
+        alert(`Error al eliminar: ${errorData.error}`);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error de conexión al eliminar el proveedor.");
+    }
   };
 
-  const handleSubirExcel = async (e: React.FormEvent) => {
+  const handleAbrirMapeo = (prov: Proveedor) => {
+    setProveedorSeleccionado(prov);
+    setArchivo(null);
+    setFilasRaw([]);
+    setVista("mapeo");
+  };
+
+  const procesarArchivoExcel = async (file: File) => {
+    setArchivo(file);
+    setCargandoPreview(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("archivo", file);
+
+      const res = await fetch("http://localhost:4000/api/proveedores/preview-excel", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setFilasRaw(data.filas || []);
+      } else {
+        alert("Error al leer la previsualización del archivo.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error de conexión al obtener previsualización.");
+    } finally {
+      setCargandoPreview(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      procesarArchivoExcel(e.target.files[0]);
+    }
+  };
+
+  const handleDropArchivo = (e: React.DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
-    if (!proveedorSubida || !archivoExcel) return;
-    setCargandoExcel(true);
-    try {
-      const resultado = await cargarListaExcel(proveedorSubida.id, archivoExcel);
-      setProductosProcesados(resultado.productos);
-      setResumenProcesado({ proveedor: resultado.proveedor, total: resultado.totalLeidos });
-      setModalExcelAbierto(false);
-    } catch (err: any) { alert(err.message || 'Error al procesar el archivo Excel'); } 
-    finally { setCargandoExcel(false); }
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      procesarArchivoExcel(e.dataTransfer.files[0]);
+    }
   };
 
-  const handleGuardarEnBD = async () => {
-    if (!proveedorSubida || productosProcesados.length === 0) return;
-    setGuardandoBD(true);
-    try {
-      const res = await guardarListaConfirmada(proveedorSubida.id, productosProcesados);
-      alert(`¡Éxito! ${res.mensaje} (${res.totalGuardados} productos persistidos).`);
-      setProductosProcesados([]); setResumenProcesado(null);
-    } catch (err: any) { alert(err.message || 'Error al guardar la lista'); } 
-    finally { setGuardandoBD(false); }
+  const handleDragOverArchivo = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
   };
+
+  const handleGuardarYProcesar = async () => {
+    if (!proveedorSeleccionado) return;
+    setGuardandoMapeo(true);
+
+    try {
+      const resMapeo = await fetch(`http://localhost:4000/api/proveedores/${proveedorSeleccionado.id}/mapeo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filaInicioData: Number(filaInicio),
+          colDescripcion,
+          colPrecio,
+          colBulto: colBulto || null,
+        }),
+      });
+
+      if (!resMapeo.ok) {
+        const errMapeo = await resMapeo.json();
+        throw new Error(errMapeo.error || "Error al guardar la configuración de mapeo.");
+      }
+
+      if (archivo) {
+        const formData = new FormData();
+        formData.append("archivo", archivo);
+
+        const resUpload = await fetch(
+          `http://localhost:4000/api/proveedores/${proveedorSeleccionado.id}/cargar-excel`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        );
+
+        if (resUpload.ok) {
+          const dataUpload = await resUpload.json();
+          alert(`¡Lista procesada con éxito! Se guardaron ${dataUpload.totalLeidos} productos en la base de datos.`);
+        } else {
+          const errUpload = await resUpload.json();
+          throw new Error(errUpload.error || "Error al procesar el archivo Excel.");
+        }
+      } else {
+        alert("Parámetros de mapeo guardados correctamente.");
+      }
+
+      setArchivo(null);
+      setFilasRaw([]);
+      setVista("directorio");
+      
+    } catch (error) {
+      console.error(error);
+      alert((error as Error).message);
+    } finally {
+      setGuardandoMapeo(false);
+    }
+  };
+
+  const proveedoresFiltrados = proveedores.filter((p) =>
+    p.nombre.toLowerCase().includes(busqueda.toLowerCase())
+  );
+
+  const maxCols = filasRaw.reduce((max, f) => Math.max(max, f.length), 0);
+  const letrasColumnas = Array.from({ length: Math.max(maxCols, 4) }, (_, i) => String.fromCharCode(65 + i));
 
   return (
-    <main className="p-8">
-      <div className="max-w-6xl mx-auto space-y-8">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-5">
-          <div>
-            <h1 className="text-2xl font-bold text-emerald-400">Gestión de Proveedores</h1>
-            <p className="text-sm text-slate-400">Directorio unificado de abastecimiento y mapeo de catálogos</p>
+    <div className="p-8 max-w-7xl mx-auto bg-gray-50 text-gray-900 min-h-screen">
+      {/* VISTA 1: DIRECTORIO DE PROVEEDORES (PANT-05) */}
+      {vista === "directorio" && (
+        <>
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Gestión de Proveedores</h1>
+              <p className="text-gray-600 mt-1">Directorio unificado de abastecimiento, homologación y mapeo de catálogos (ABM)</p>
+            </div>
+            <button
+              onClick={() => setMostrarModalCrear(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-xs cursor-pointer"
+            >
+              + Registrar Nuevo Proveedor
+            </button>
           </div>
-          <button onClick={() => setModalAbierto(true)} className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-medium px-4 py-2 rounded-lg transition">
-            <Plus className="w-4 h-4" /> Nuevo Proveedor
-          </button>
-        </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            {loading ? <div className="p-8 text-center text-slate-500">Cargando proveedores...</div> : (
-              <div className="space-y-3">
-                {proveedores.map((p) => (
-                  <div key={p.id} className="p-5 bg-slate-900 border border-slate-800 rounded-xl flex items-center justify-between hover:border-slate-700 transition">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-white text-base">{p.nombre}</span>
-                        {p.mapeo && <span className="flex items-center gap-1 text-[11px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-medium"><CheckCircle2 className="w-3 h-3" /> Mapeado</span>}
+          <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-8 flex flex-col md:flex-row gap-4 justify-between items-center">
+            <div className="relative w-full md:w-96">
+              <span className="absolute inset-y-0 left-3 flex items-center text-gray-400">🔍</span>
+              <input
+                type="text"
+                placeholder="Buscar por nombre, CUIT, rubro..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+              />
+            </div>
+            <div className="flex gap-2 w-full md:w-auto">
+              <button onClick={() => setFiltroEstado("Todos")} className={`px-4 py-2 rounded-lg text-sm font-medium border ${filtroEstado === "Todos" ? "border-emerald-600 text-emerald-700 bg-emerald-50" : "border-gray-200 text-gray-600 bg-white"}`}>
+                Todos ({proveedores.length})
+              </button>
+              <button onClick={() => setFiltroEstado("Vigentes")} className={`px-4 py-2 rounded-lg text-sm font-medium border ${filtroEstado === "Vigentes" ? "border-emerald-600 text-emerald-700 bg-emerald-50" : "border-gray-200 text-gray-600 bg-white"}`}>
+                Vigentes
+              </button>
+              <button onClick={() => setFiltroEstado("Vencidos")} className={`px-4 py-2 rounded-lg text-sm font-medium border ${filtroEstado === "Vencidos" ? "border-emerald-600 text-emerald-700 bg-emerald-50" : "border-gray-200 text-gray-600 bg-white"}`}>
+                Vencidos
+              </button>
+            </div>
+          </div>
+
+          {cargando ? (
+            <div className="text-center py-12 text-gray-500">Cargando proveedores...</div>
+          ) : proveedoresFiltrados.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-xl border border-gray-200 text-gray-500">
+              No se encontraron proveedores registrados.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {proveedoresFiltrados.map((prov) => {
+                const iniciales = prov.nombre.substring(0, 2).toUpperCase();
+                return (
+                  <div key={prov.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-sm">
+                            {iniciales}
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-gray-900 text-base">{prov.nombre}</h3>
+                            <p className="text-xs text-gray-500">CUIT: {prov.cuit || "Sin registrar"}</p>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-4 text-xs text-slate-400 flex-wrap">
-                        {p.contactoNombre && <span className="flex items-center gap-1"><User className="w-3 h-3" /> {p.contactoNombre}</span>}
-                        {p.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {p.email}</span>}
-                        {p.telefono && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {p.telefono}</span>}
+
+                      <div className="flex justify-between items-center mb-4">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                          Vigente
+                        </span>
+                        <span className="text-xs font-semibold text-gray-500">📦 Activo</span>
+                      </div>
+
+                      <div className="space-y-1.5 text-xs text-gray-600 mb-6 border-t border-gray-100 pt-3">
+                        <p>👤 {prov.contactoNombre || "Contacto Comercial"}</p>
+                        <p>✉️ {prov.email || "contacto@proveedor.com"}</p>
+                        <p>📞 {prov.telefono || "+54 11 0000-0000"}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button onClick={() => abrirConfiguracionMapeo(p)} className="flex items-center gap-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-lg border border-slate-700 transition"><Settings2 className="w-3.5 h-3.5 text-emerald-400" /> Mapeo</button>
-                      {p.mapeo ? (
-                        <button onClick={() => abrirModalSubida(p)} className="flex items-center gap-1.5 text-xs bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 px-3 py-2 rounded-lg transition"><Upload className="w-3.5 h-3.5" /> Subir Excel</button>
-                      ) : <span className="text-[11px] text-slate-500 italic px-2">Configurar mapeo</span>}
-                      
-                      <button onClick={() => handleEliminarProveedor(p.id, p.nombre)} className="flex items-center gap-1.5 text-xs bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 px-3 py-2 rounded-lg transition cursor-pointer" title="Eliminar Proveedor">
-                        <Trash2 className="w-3.5 h-3.5" /> Eliminar
+
+                    <div className="flex gap-2 border-t border-gray-100 pt-4">
+                      <button
+                        onClick={() => handleAbrirMapeo(prov)}
+                        className="grow bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-semibold py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        ⚙️ Cargar Lista / Mapear
+                      </button>
+                      <button
+                        onClick={() => handleEliminarProveedor(prov.id, prov.nombre)}
+                        className="bg-white hover:bg-red-50 border border-red-200 text-red-600 text-xs font-semibold py-2 px-3 rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+                        title="Eliminar proveedor"
+                      >
+                        🗑️ Borrar
                       </button>
                     </div>
                   </div>
-                ))}
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* MODAL CREAR NUEVO PROVEEDOR */}
+      {mostrarModalCrear && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 text-gray-900">
+            <div className="flex justify-between items-center mb-4 pb-2 border-b border-gray-100">
+              <h3 className="text-xl font-bold text-gray-900">Registrar Nuevo Proveedor</h3>
+              <button
+                onClick={() => setMostrarModalCrear(false)}
+                className="text-gray-400 hover:text-gray-600 font-bold text-lg p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCrearProveedor} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  Nombre de la Empresa / Mayorista *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ej: Distribuidora Central S.A."
+                  value={nuevoNombre}
+                  onChange={(e) => setNuevoNombre(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  CUIT
+                </label>
+                <input
+                  type="text"
+                  placeholder="30-12345678-9"
+                  value={nuevoCuit}
+                  onChange={(e) => setNuevoCuit(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  Nombre del Contacto
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Juan Pérez"
+                  value={nuevoContacto}
+                  onChange={(e) => setNuevoContacto(e.target.value)}
+                  className="w-full p-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="ventas@prov.com"
+                    value={nuevoEmail}
+                    onChange={(e) => setNuevoEmail(e.target.value)}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                    Teléfono
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="+54 11 ..."
+                    value={nuevoTelefono}
+                    onChange={(e) => setNuevoTelefono(e.target.value)}
+                    className="w-full p-2.5 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t border-gray-100 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setMostrarModalCrear(false)}
+                  className="flex-1 bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 font-semibold py-2.5 px-4 rounded-lg transition-colors text-sm cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={creandoProveedor}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2.5 px-4 rounded-lg transition-colors text-sm shadow-xs cursor-pointer"
+                >
+                  {creandoProveedor ? "Guardando..." : "Guardar Proveedor"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* VISTA 2: IMPORTADOR Y MAPEADOR DE CATÁLOGOS (PANT-04) */}
+      {vista === "mapeo" && proveedorSeleccionado && (
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Importador y Mapeador de Catálogos</h1>
+              <p className="text-gray-600 mt-1">Carga listas de precios y vincula las columnas al catálogo maestro.</p>
+            </div>
+            <button onClick={() => setVista("directorio")} className="bg-white border border-gray-300 text-gray-700 text-sm font-semibold py-2 px-4 rounded-lg hover:bg-gray-50 cursor-pointer">
+              ← Volver al Directorio
+            </button>
+          </div>
+
+          {/* PASO 1 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+            <span className="inline-block bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 rounded mb-4">PASO 1</span>
+            <h3 className="text-lg font-bold text-gray-900 mb-4 inline-block ml-3">Cargar Archivo de Proveedor</h3>
+
+            <label
+              onDragOver={handleDragOverArchivo}
+              onDrop={handleDropArchivo}
+              className="border-2 border-dashed border-emerald-300 bg-emerald-50/40 hover:bg-emerald-50 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-colors"
+            >
+              <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 text-xl font-bold mb-3">☁️</div>
+              <p className="text-gray-800 font-bold text-sm">Arrastra tu archivo .xlsx o .xls aquí</p>
+              <p className="text-emerald-600 font-semibold text-xs mt-1">o haz clic para seleccionar archivo</p>
+              <input type="file" accept=".xlsx, .xls" onChange={handleFileChange} className="hidden" />
+            </label>
+
+            {cargandoPreview && <p className="mt-3 text-sm text-amber-600 font-medium">Leyendo celdas del archivo Excel...</p>}
+            {archivo && !cargandoPreview && (
+              <div className="mt-4 p-3 bg-green-100 border border-green-300 rounded-lg text-sm text-green-800 font-medium">
+                📄 Archivo cargado correctamente: <strong>{archivo.name}</strong>
               </div>
             )}
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 h-fit">
-            <h2 className="text-lg font-semibold flex items-center gap-2 text-slate-200 mb-4 border-b border-slate-800 pb-3"><FileSpreadsheet className="w-5 h-5 text-emerald-400" /> Mapeo de Columnas</h2>
-            {proveedorSeleccionado ? (
-              <form onSubmit={handleGuardarMapeo} className="space-y-4">
-                <p className="text-xs text-amber-400 bg-amber-500/10 p-2.5 rounded border border-amber-500/20">Configurando: <strong>{proveedorSeleccionado.nombre}</strong></p>
-                <div><label className="text-xs text-slate-400 block mb-1">Fila inicio de datos</label><input type="number" min="1" value={filaInicioData} onChange={(e) => setFilaInicioData(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" required /></div>
-                <div className="space-y-3">
-                  <div><label className="text-xs text-slate-400 block mb-1">Columna Descripción (*)</label><input type="text" value={colDescripcion} onChange={(e) => setColDescripcion(e.target.value.toUpperCase())} className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" required /></div>
-                  <div><label className="text-xs text-slate-400 block mb-1">Columna Precio (*)</label><input type="text" value={colPrecio} onChange={(e) => setColPrecio(e.target.value.toUpperCase())} className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" required /></div>
-                  <div><label className="text-xs text-slate-400 block mb-1">Columna Bulto (Opcional)</label><input type="text" value={colBulto} onChange={(e) => setColBulto(e.target.value.toUpperCase())} className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500" /></div>
-                </div>
-                <div className="flex gap-2 pt-2">
-                  <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-2.5 rounded transition">Guardar</button>
-                  <button type="button" onClick={() => setProveedorSeleccionado(null)} className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold py-2.5 rounded transition">Cancelar</button>
-                </div>
-              </form>
-            ) : <p className="text-xs text-slate-500 py-6 text-center">Selecciona "Mapeo" en cualquier proveedor.</p>}
-          </div>
-        </div>
+          {/* PASO 2 */}
+          <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+            <span className="inline-block bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 rounded mb-4">PASO 2</span>
+            <h3 className="text-lg font-bold text-gray-900 mb-4 inline-block ml-3">Configuración de Mapeo & Equivalencias</h3>
 
-        {productosProcesados.length > 0 && resumenProcesado && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <h3 className="text-lg font-bold text-emerald-400 flex items-center gap-2"><Table className="w-5 h-5" /> Previsualización</h3>
-                <p className="text-xs text-slate-400">Proveedor: <strong className="text-white">{resumenProcesado.proveedor}</strong> — Se leyeron <strong className="text-emerald-400">{resumenProcesado.total}</strong> productos.</p>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Proveedor</label>
+                <input type="text" disabled value={proveedorSeleccionado.nombre} className="w-full p-2.5 border border-gray-200 bg-gray-100 rounded-lg text-sm font-semibold text-gray-800" />
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={handleGuardarEnBD} disabled={guardandoBD} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-2 rounded transition disabled:opacity-50 flex items-center gap-1.5"><Database className="w-3.5 h-3.5" />{guardandoBD ? 'Guardando...' : 'Confirmar y Guardar'}</button>
-                <button onClick={() => { setProductosProcesados([]); setResumenProcesado(null); }} className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded transition">Cerrar</button>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Fila donde inician los datos</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={filaInicio}
+                  onChange={(e) => setFilaInicio(parseInt(e.target.value) || 1)}
+                  className="w-full p-2.5 border border-gray-300 bg-white text-gray-900 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
               </div>
             </div>
-            <div className="max-h-96 overflow-y-auto border border-slate-800 rounded-lg">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] sticky top-0 border-b border-slate-800">
-                  <tr><th className="py-3 px-4">#</th><th className="py-3 px-4">Descripción</th><th className="py-3 px-4 text-right">Precio</th><th className="py-3 px-4 text-center">Bulto</th></tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/50">
-                  {productosProcesados.map((p, idx) => (
-                    <tr key={idx} className="hover:bg-slate-800/30 transition">
-                      <td className="py-2.5 px-4 text-slate-500 font-mono">{idx + 1}</td><td className="py-2.5 px-4 font-medium text-white">{p.descripcion}</td>
-                      <td className="py-2.5 px-4 text-right font-mono text-emerald-400 font-semibold">$ {p.precio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
-                      <td className="py-2.5 px-4 text-center text-slate-400">{p.bulto ?? '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </div>
 
-      {modalExcelAbierto && proveedorSubida && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full space-y-4">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2"><FileUp className="w-5 h-5 text-emerald-400" /> Cargar Planilla</h3>
-            <form onSubmit={handleSubirExcel} className="space-y-4">
-              <div className="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-lg p-6 text-center bg-slate-950 transition">
-                <input type="file" accept=".xlsx, .xls" onChange={(e) => setArchivoExcel(e.target.files?.[0] || null)} className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer" required />
+            {/* PANEL DE TARJETAS ARRASTRABLES */}
+            <div className="mb-6 bg-emerald-50/50 p-4 rounded-xl border border-emerald-100">
+              <p className="text-xs font-bold text-emerald-900 uppercase tracking-wider mb-3">
+                👇 Arrastrá cada tarjeta de campo y soltala sobre la cabecera de la columna correspondiente:
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <div
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("fieldType", "DESCRIPCION")}
+                  className={`px-4 py-2.5 rounded-lg text-xs font-bold shadow-xs border cursor-grab active:cursor-grabbing flex items-center gap-2 transition-all ${
+                    colDescripcion
+                      ? "bg-emerald-100 text-emerald-800 border-emerald-300 opacity-80"
+                      : "bg-emerald-600 text-white border-emerald-700 hover:bg-emerald-700"
+                  }`}
+                >
+                  <span>✋ 📌 Descripción (Requerido)</span>
+                  {colDescripcion && <span className="text-[10px] bg-emerald-200 px-1.5 py-0.5 rounded text-emerald-900">En Columna {colDescripcion}</span>}
+                </div>
+
+                <div
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("fieldType", "PRECIO")}
+                  className={`px-4 py-2.5 rounded-lg text-xs font-bold shadow-xs border cursor-grab active:cursor-grabbing flex items-center gap-2 transition-all ${
+                    colPrecio
+                      ? "bg-blue-100 text-blue-800 border-blue-300 opacity-80"
+                      : "bg-blue-600 text-white border-blue-700 hover:bg-blue-700"
+                  }`}
+                >
+                  <span>✋ 💵 Precio Unitario (Requerido)</span>
+                  {colPrecio && <span className="text-[10px] bg-blue-200 px-1.5 py-0.5 rounded text-blue-900">En Columna {colPrecio}</span>}
+                </div>
+
+                <div
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("fieldType", "BULTO")}
+                  className={`px-4 py-2.5 rounded-lg text-xs font-bold shadow-xs border cursor-grab active:cursor-grabbing flex items-center gap-2 transition-all ${
+                    colBulto
+                      ? "bg-amber-100 text-amber-800 border-amber-300 opacity-80"
+                      : "bg-amber-600 text-white border-amber-700 hover:bg-amber-700"
+                  }`}
+                >
+                  <span>✋ 📦 Cantidad / Bulto (Opcional)</span>
+                  {colBulto && <span className="text-[10px] bg-amber-200 px-1.5 py-0.5 rounded text-amber-900">En Columna {colBulto}</span>}
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button type="submit" disabled={cargandoExcel} className="w-full bg-emerald-600 text-white text-xs font-semibold py-2.5 rounded disabled:opacity-50">{cargandoExcel ? 'Procesando...' : 'Procesar Lista'}</button>
-                <button type="button" onClick={() => setModalExcelAbierto(false)} className="w-full bg-slate-800 text-slate-300 text-xs font-semibold py-2.5 rounded">Cancelar</button>
+            </div>
+
+            {/* TABLA PREVISUALIZACIÓN */}
+            <div className="border border-gray-200 rounded-xl overflow-hidden mb-6 bg-white shadow-sm">
+              <div className="p-4 bg-gray-50 border-b border-gray-200">
+                <h4 className="font-bold text-gray-800 text-sm">Vista Previa del Archivo</h4>
+                <p className="text-xs text-gray-500 mt-0.5">Soltá las fichas en el recuadro punteado de la columna correspondiente.</p>
               </div>
-            </form>
+
+              {filasRaw.length === 0 ? (
+                <div className="p-8 text-center text-gray-400 text-sm">
+                  Selecciona o arrastra un archivo .xlsx o .xls arriba para cargar las celdas y mapear por arrastre.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-50 border-b border-gray-200">
+                      <tr>
+                        {letrasColumnas.map((letra) => {
+                          const esDesc = colDescripcion === letra;
+                          const esPrecio = colPrecio === letra;
+                          const esBulto = colBulto === letra;
+
+                          return (
+                            <th
+                              key={letra}
+                              onDragOver={(e) => e.preventDefault()}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                const fieldType = e.dataTransfer.getData("fieldType");
+                                if (fieldType === "DESCRIPCION") setColDescripcion(letra);
+                                if (fieldType === "PRECIO") setColPrecio(letra);
+                                if (fieldType === "BULTO") setColBulto(letra);
+                              }}
+                              className={`p-3 transition-all min-w-200px ${
+                                esDesc ? "bg-emerald-50 border-b-2 border-emerald-500" :
+                                esPrecio ? "bg-blue-50 border-b-2 border-blue-500" :
+                                esBulto ? "bg-amber-50 border-b-2 border-amber-500" : "bg-gray-50"
+                              }`}
+                            >
+                              <div className="text-xs font-bold text-gray-700 uppercase mb-2 text-center">
+                                COLUMNA {letra}
+                              </div>
+
+                              <div className="min-h-44px flex items-center justify-center">
+                                {esDesc && (
+                                  <div className="w-full bg-emerald-600 text-white text-xs font-bold py-2 px-2.5 rounded-lg flex items-center justify-between shadow-xs">
+                                    <span>📌 Descripción</span>
+                                    <button onClick={() => setColDescripcion("")} className="hover:bg-emerald-700 rounded px-1.5 text-white cursor-pointer">✕</button>
+                                  </div>
+                                )}
+                                {esPrecio && (
+                                  <div className="w-full bg-blue-600 text-white text-xs font-bold py-2 px-2.5 rounded-lg flex items-center justify-between shadow-xs">
+                                    <span>💵 Precio Unit.</span>
+                                    <button onClick={() => setColPrecio("")} className="hover:bg-blue-700 rounded px-1.5 text-white cursor-pointer">✕</button>
+                                  </div>
+                                )}
+                                {esBulto && (
+                                  <div className="w-full bg-amber-600 text-white text-xs font-bold py-2 px-2.5 rounded-lg flex items-center justify-between shadow-xs">
+                                    <span>📦 Bulto</span>
+                                    <button onClick={() => setColBulto("")} className="hover:bg-amber-700 rounded px-1.5 text-white cursor-pointer">✕</button>
+                                  </div>
+                                )}
+
+                                {!esDesc && !esPrecio && !esBulto && (
+                                  <div className="w-full border-2 border-dashed border-gray-300 rounded-lg py-2.5 text-[11px] text-gray-400 font-medium text-center hover:border-emerald-400 hover:text-emerald-600 transition-colors cursor-pointer">
+                                    Soltar campo aquí
+                                  </div>
+                                )}
+                              </div>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filasRaw.slice(0, 6).map((row, idx) => (
+                        <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50 text-xs">
+                          {letrasColumnas.map((letra, colIdx) => {
+                            const valorRaw = row[colIdx];
+                            const esNulo = valorRaw === null || valorRaw === undefined || valorRaw === "null" || String(valorRaw).trim() === "";
+
+                            const esDesc = colDescripcion === letra;
+                            const esPrecio = colPrecio === letra;
+                            const esBulto = colBulto === letra;
+
+                            return (
+                              <td
+                                key={colIdx}
+                                className={`p-3 font-medium ${
+                                  esNulo ? "text-gray-400 font-normal" : "text-gray-800"
+                                } ${
+                                  esDesc ? "bg-emerald-50/40 font-semibold" :
+                                  esPrecio ? "bg-blue-50/40 font-bold text-blue-950" :
+                                  esBulto ? "bg-amber-50/40" : ""
+                                }`}
+                              >
+                                {esNulo ? "—" : String(valorRaw)}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-between items-center border-t border-gray-100 pt-4">
+              <p className="text-xs text-gray-500">ℹ️ Podés arrastrar fichas entre columnas o tocar el botón ✕ para quitar una asignación.</p>
+              <button
+                onClick={handleGuardarYProcesar}
+                disabled={guardandoMapeo || !archivo || !colDescripcion || !colPrecio}
+                className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-3 px-6 rounded-lg transition-colors cursor-pointer"
+              >
+                {guardandoMapeo ? "Procesando Lista..." : "Guardar Parámetros y Procesar Lista →"}
+              </button>
+            </div>
           </div>
         </div>
       )}
-
-      {modalAbierto && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-md w-full space-y-4">
-            <h3 className="text-lg font-bold text-white">Registrar Nuevo Proveedor</h3>
-            <form onSubmit={handleCrearProveedor} className="space-y-3">
-              <div><label className="text-xs text-slate-400 block mb-1">Nombre (*)</label><input type="text" value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white" required /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-xs text-slate-400 block mb-1">Email</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white" /></div>
-                <div><label className="text-xs text-slate-400 block mb-1">Teléfono</label><input type="text" value={telefono} onChange={(e) => setTelefono(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm text-white" /></div>
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button type="submit" className="w-full bg-emerald-600 text-white text-xs font-semibold py-2.5 rounded">Guardar</button>
-                <button type="button" onClick={() => setModalAbierto(false)} className="w-full bg-slate-800 text-slate-300 text-xs font-semibold py-2.5 rounded">Cancelar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </main>
+    </div>
   );
 }

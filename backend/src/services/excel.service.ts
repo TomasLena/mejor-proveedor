@@ -75,4 +75,16 @@ export interface ProductoExtraido {
 
         return productos;
     }
+
+    static obtenerPrevisualizacion(buffer: Buffer) {
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    
+    const filas: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+
+    // control de previsualizacion: parametro normal 10.
+    return filas.slice(0, 10);
+    }
 }

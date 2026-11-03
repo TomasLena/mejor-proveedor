@@ -8,8 +8,10 @@ router.get('/', ProveedorController.listar);
 router.post('/', ProveedorController.crear);
 router.post('/:id/mapeo', ProveedorController.guardarMapeo);
 
+router.post('/:id/cargar-excel', upload.single('archivo'), ProveedorController.cargarListaExcel);
 router.post('/:id/cargar-lista', upload.single('archivo'), ProveedorController.cargarListaExcel);
 router.post('/:id/guardar-lista', ProveedorController.guardarListaConfirmada);
 router.delete('/:id', ProveedorController.eliminar);
+router.post('/preview-excel', upload.single('archivo'), ProveedorController.previsualizarExcel);
 
 export default router;

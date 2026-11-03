@@ -1,35 +1,74 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { buscarComparacion } from '@/lib/api';
-import { Search, Award, Clock, Sparkles } from 'lucide-react';
+import { Search, Award } from 'lucide-react';
 
 interface ProductoComparado {
   id: string;
   descripcion: string;
   precio: number;
   bulto?: number | null;
-  fechaCarga: string;
-  diasAntiguedad: number;
-  semaforo: 'VERDE' | 'AMARILLO' | 'ROJO';
+  fechaCarga?: string;
+  diasAntiguedad?: number;
+  semaforo?: 'VERDE' | 'AMARILLO' | 'ROJO';
   proveedor: {
     id: string;
     nombre: string;
   };
-  similitud: number;
+  similitud?: number;
+}
+
+interface FilaMatriz {
+  descripcion: string;
+  preciosPorProveedor: { [nombreProveedor: string]: number };
+  mejorPrecio: number;
+  mejorProveedor: string;
 }
 
 export default function ComparativasPage() {
   const [queryBusqueda, setQueryBusqueda] = useState('');
   const [resultadosComparacion, setResultadosComparacion] = useState<ProductoComparado[]>([]);
-  const [buscandoComparacion, setBuscandoComparacion] = useState(false);
+  const [buscando, setBuscando] = useState(true);
   const [busquedaRealizada, setBusquedaRealizada] = useState(false);
+
+  // Carga inicial automática al montar el componente
+  useEffect(() => {
+    fetchProductosIniciales();
+  }, []);
+
+  const fetchProductosIniciales = async () => {
+    setBuscando(true);
+    try {
+      const res = await fetch('http://localhost:4000/api/productos');
+      if (res.ok) {
+        const data = await res.json();
+        const formateados = data.map((p: any) => ({
+          id: p.id,
+          descripcion: p.descripcion,
+          precio: p.precio,
+          bulto: p.bulto,
+          fechaCarga: p.fechaCarga,
+          proveedor: p.proveedor,
+        }));
+        setResultadosComparacion(formateados);
+        setBusquedaRealizada(true);
+      }
+    } catch (error) {
+      console.error('Error al cargar catálogo inicial:', error);
+    } finally {
+      setBuscando(false);
+    }
+  };
 
   const handleBuscarComparacion = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!queryBusqueda.trim()) return;
+    
+    if (!queryBusqueda.trim()) {
+      return fetchProductosIniciales();
+    }
 
-    setBuscandoComparacion(true);
+    setBuscando(true);
     try {
       const resultados = await buscarComparacion(queryBusqueda);
       setResultadosComparacion(resultados);
@@ -37,112 +76,168 @@ export default function ComparativasPage() {
     } catch (err: any) {
       alert(err.message || 'Error al realizar la búsqueda');
     } finally {
-      setBuscandoComparacion(false);
+      setBuscando(false);
     }
   };
 
+  const proveedoresUnicos = useMemo(() => {
+    const lista = resultadosComparacion.map((item) => item.proveedor.nombre);
+    return Array.from(new Set(lista));
+  }, [resultadosComparacion]);
+
+  const filasMatriz = useMemo(() => {
+    const mapa = new Map<string, { [prov: string]: number }>();
+
+    resultadosComparacion.forEach((item) => {
+      const desc = item.descripcion;
+      if (!mapa.has(desc)) {
+        mapa.set(desc, {});
+      }
+      const precios = mapa.get(desc)!;
+      if (!precios[item.proveedor.nombre] || item.precio < precios[item.proveedor.nombre]) {
+        precios[item.proveedor.nombre] = item.precio;
+      }
+    });
+
+    const filas: FilaMatriz[] = [];
+
+    mapa.forEach((preciosProv, descripcion) => {
+      const listaPrecios = Object.values(preciosProv);
+      const mejorPrecio = Math.min(...listaPrecios);
+      const mejorProveedor =
+        Object.keys(preciosProv).find((prov) => preciosProv[prov] === mejorPrecio) || '';
+
+      filas.push({
+        descripcion,
+        preciosPorProveedor: preciosProv,
+        mejorPrecio,
+        mejorProveedor,
+      });
+    });
+
+    // orden alfabetico y limitado a 100 filas (testear experiencia de usuario)
+    return filas
+      .sort((a, b) => a.descripcion.localeCompare(b.descripcion))
+      .slice(0, 100);
+  }, [resultadosComparacion]);
+
   return (
-    <main className="p-8">
-      <div className="max-w-6xl mx-auto space-y-6">
-        <div className="border-b border-slate-800 pb-5">
-          <h1 className="text-2xl font-bold text-emerald-400">Comparador de Precios Mayoristas</h1>
-          <p className="text-sm text-slate-400">Análisis comparativo de catálogos y tarifas de compras vigentes.</p>
+    <main className="p-8 max-w-7xl mx-auto bg-gray-50 min-h-screen text-gray-900">
+      <div className="space-y-6">
+        {/* Cabecera */}
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Comparador de Precios Mayoristas</h1>
+          <p className="text-gray-600 mt-1">Análisis comparativo de catálogos y tarifas de compras vigentes.</p>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
-          <form onSubmit={handleBuscarComparacion} className="flex gap-2">
+        {/* Buscador */}
+        <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-xs space-y-4">
+          <form onSubmit={handleBuscarComparacion} className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Search className="w-5 h-5 text-gray-400 absolute left-3.5 top-3" />
               <input
                 type="text"
-                placeholder="Ej. Cuaderno, Resma, Lapicera, Boligrafo..."
+                placeholder="Buscar por nombre (ej. Cuaderno, Resma, Bolígrafo)..."
                 value={queryBusqueda}
                 onChange={(e) => setQueryBusqueda(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
+                className="w-full bg-white border border-gray-300 rounded-lg pl-10 pr-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
             <button
               type="submit"
-              disabled={buscandoComparacion}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition cursor-pointer disabled:opacity-50 flex items-center gap-2"
+              disabled={buscando}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold px-6 py-2.5 rounded-lg text-sm transition cursor-pointer flex items-center justify-center gap-2 shadow-xs"
             >
-              {buscandoComparacion ? 'Buscando...' : 'Buscar y Comparar'}
+              {buscando ? 'Procesando...' : 'Buscar y Comparar'}
             </button>
           </form>
 
-          {busquedaRealizada && (
-            <div className="space-y-3 pt-2">
-              {resultadosComparacion.length === 0 ? (
-                <div className="p-6 text-center bg-slate-950 border border-slate-800 rounded-lg text-slate-400 text-xs">
-                  No se encontraron coincidencias para "<strong className="text-slate-200">{queryBusqueda}</strong>".
+          {/* Estado de Resultados */}
+          {buscando ? (
+            <div className="py-12 text-center text-gray-500 bg-white rounded-xl border border-gray-100">
+              Cargando catálogo comparativo desde PostgreSQL...
+            </div>
+          ) : busquedaRealizada && (
+            <div className="pt-2">
+              {filasMatriz.length === 0 ? (
+                <div className="p-8 text-center bg-gray-50 border border-gray-200 rounded-xl text-gray-500 text-sm">
+                  No se encontraron productos para mostrar. Subí una lista en Proveedores.
                 </div>
               ) : (
-                <div className="space-y-2">
-                  <div className="text-xs text-slate-400 flex items-center justify-between px-1">
+                <div className="space-y-4">
+                  <div className="text-xs text-gray-600 flex justify-between items-center px-1">
                     <span>
-                      Se encontraron <strong className="text-emerald-400">{resultadosComparacion.length}</strong> opciones para "<strong className="text-white">{queryBusqueda}</strong>":
+                      Mostrando <strong className="text-emerald-700">{filasMatriz.length}</strong> productos (máx. 100 por rendimiento) comparados entre <strong className="text-emerald-700">{proveedoresUnicos.length}</strong> proveedores:
                     </span>
-                    <span className="text-[11px] text-slate-500 italic">Ordenado del menor al mayor precio</span>
+                    <span className="text-gray-400 font-medium">Ordenado alfabéticamente A-Z</span>
                   </div>
 
-                  <div className="border border-slate-800 rounded-lg overflow-hidden bg-slate-950">
-                    <table className="w-full text-left text-xs text-slate-300">
-                      <thead className="bg-slate-900 text-slate-400 uppercase text-[10px] border-b border-slate-800">
-                        <tr>
-                          <th className="py-3 px-4">Ranking / Oferta</th>
-                          <th className="py-3 px-4">Descripción en Lista</th>
-                          <th className="py-3 px-4">Proveedor</th>
-                          <th className="py-3 px-4 text-center">Coincidencia</th>
-                          <th className="py-3 px-4 text-center">Vigencia</th>
-                          <th className="py-3 px-4 text-right">Precio</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/60">
-                        {resultadosComparacion.map((item, idx) => {
-                          const esMejorPrecio = idx === 0;
-                          return (
-                            <tr key={item.id} className={`transition ${esMejorPrecio ? 'bg-emerald-950/20 hover:bg-emerald-950/30' : 'hover:bg-slate-900/50'}`}>
-                              <td className="py-3 px-4">
-                                {esMejorPrecio ? (
-                                  <span className="inline-flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold px-2.5 py-1 rounded-full">
-                                    <Award className="w-3.5 h-3.5" /> Mejor Precio
-                                  </span>
-                                ) : (
-                                  <span className="font-mono text-slate-500 pl-2">#{idx + 1}</span>
-                                )}
+                  {/* Tabla Matricial Dinámica */}
+                  <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-xs">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-gray-50 text-gray-600 uppercase text-xs border-b border-gray-200 font-bold">
+                          <tr>
+                            <th className="py-3.5 px-4">Descripción del Producto</th>
+                            {proveedoresUnicos.map((provNombre) => (
+                              <th key={provNombre} className="py-3.5 px-4 text-center">
+                                {provNombre}
+                              </th>
+                            ))}
+                            <th className="py-3.5 px-4 text-center bg-emerald-50/70 text-emerald-900">
+                              Mejor Opción
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filasMatriz.map((fila, idx) => (
+                            <tr key={idx} className="hover:bg-gray-50/80 transition-colors">
+                              {/* Descripción */}
+                              <td className="py-4 px-4 font-semibold text-gray-900">
+                                {fila.descripcion}
                               </td>
-                              <td className="py-3 px-4 font-medium text-white">{item.descripcion}</td>
-                              <td className="py-3 px-4 font-semibold text-slate-300">{item.proveedor.nombre}</td>
-                              <td className="py-3 px-4 text-center">
-                                <span className="inline-flex items-center gap-1 text-[11px] bg-slate-900 border border-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono">
-                                  <Sparkles className="w-3 h-3 text-amber-400" /> {item.similitud}%
-                                </span>
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                {item.semaforo === 'VERDE' && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-full font-medium">
-                                    <Clock className="w-3 h-3" /> Vigente ({item.diasAntiguedad}d)
+
+                              {/* Columnas por Proveedor */}
+                              {proveedoresUnicos.map((provNombre) => {
+                                const precioProv = fila.preciosPorProveedor[provNombre];
+                                const esMejor = precioProv !== undefined && precioProv === fila.mejorPrecio;
+
+                                return (
+                                  <td key={provNombre} className="py-4 px-4 text-center">
+                                    {precioProv !== undefined ? (
+                                      <span
+                                        className={`inline-block px-3 py-1 rounded-md font-bold text-xs transition-all ${
+                                          esMejor
+                                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-2xs'
+                                            : 'text-gray-700'
+                                        }`}
+                                      >
+                                        $ {precioProv.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-300 font-normal">—</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+
+                              {/* Resumen: Mejor Precio */}
+                              <td className="py-4 px-4 text-center bg-emerald-50/30">
+                                <div className="inline-flex flex-col items-center">
+                                  <span className="inline-flex items-center gap-1 font-black text-emerald-700 text-sm">
+                                    <Award className="w-4 h-4 text-emerald-600" />
+                                    $ {fila.mejorPrecio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                                   </span>
-                                )}
-                                {item.semaforo === 'AMARILLO' && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full font-medium">
-                                    <Clock className="w-3 h-3" /> Alerta ({item.diasAntiguedad}d)
+                                  <span className="text-[11px] font-semibold text-emerald-900/70 mt-0.5">
+                                    {fila.mejorProveedor}
                                   </span>
-                                )}
-                                {item.semaforo === 'ROJO' && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] bg-red-500/10 text-red-400 border border-red-500/20 px-2 py-0.5 rounded-full font-medium">
-                                    <Clock className="w-3 h-3" /> Obsoleta (&gt;60d)
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-3 px-4 text-right font-mono font-bold text-sm text-emerald-400">
-                                $ {item.precio.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                </div>
                               </td>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}

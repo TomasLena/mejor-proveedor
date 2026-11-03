@@ -70,7 +70,7 @@ export async function cargarListaExcel(proveedorId: string, archivo: File): Prom
         throw new Error(errorData.error || 'Error al procesar el archivo Excel');
     }
 
-    
+
 
     return res.json();
 }
@@ -92,7 +92,7 @@ export async function cargarListaExcel(proveedorId: string, archivo: File): Prom
         }
 
     export async function buscarComparacion(query: string) {
-        const res = await fetch(`${API_URL}/comparar?q=${encodeURIComponent(query)}`);
+        const res = await fetch(`${API_URL}/comparador?q=${encodeURIComponent(query)}`);
         if (!res.ok) {
             throw new Error('Error al realizar la búsqueda de comparación');
         }
