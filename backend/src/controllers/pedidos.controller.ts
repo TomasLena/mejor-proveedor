@@ -34,4 +34,32 @@ export class PedidosController {
         return res.status(500).json({ error: (error as Error).message });
         }
     }
-}
+
+    static async obtenerPedidos(req: Request, res: Response) {
+        try {
+        const pedidos = await prisma.pedido.findMany({
+            orderBy: { fecha: 'desc' },
+            include: {
+            detalles: {
+                include: {
+                producto: {
+                    include: {
+                    listaPrecio: {
+                        include: {
+                        proveedor: true
+                        }
+                    }
+                    }
+                }
+                }
+            }
+            }
+        });
+        return res.json(pedidos);
+        } catch (error) {
+        return res.status(500).json({ error: (error as Error).message });
+        }
+    }
+    }
+
+

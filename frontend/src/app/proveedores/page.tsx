@@ -9,6 +9,56 @@ interface Proveedor {
   email?: string;
   telefono?: string;
   cuit?: string;
+  mapeo?: {
+    id?: string;
+    colDescripcion?: string;
+    colPrecio?: string;
+  } | null;
+  listas?: { fechaCarga: string }[];
+}
+
+export function obtenerSemaforoVigencia(fechaCargaStr?: string | Date) {
+  if (!fechaCargaStr) {
+    return {
+      color: 'GRIS' as const,
+      label: 'Sin Lista',
+      dias: 0,
+      badgeClass: 'bg-gray-100 text-gray-700 border-gray-300',
+      dotClass: 'bg-gray-400',
+    };
+  }
+
+  const fechaCarga = new Date(fechaCargaStr);
+  const hoy = new Date();
+  const diffMs = hoy.getTime() - fechaCarga.getTime();
+  const dias = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+  if (dias <= 30) {
+    return {
+      color: 'VERDE' as const,
+      label: 'Vigente',
+      dias,
+      badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+      dotClass: 'bg-emerald-500',
+    };
+  } else if (dias <= 60) {
+    const diasRestantes = 60 - dias;
+    return {
+      color: 'AMARILLO' as const,
+      label: `Por vencer • ${diasRestantes} días`,
+      dias,
+      badgeClass: 'bg-amber-100 text-amber-900 border-amber-300',
+      dotClass: 'bg-amber-500',
+    };
+  } else {
+    return {
+      color: 'ROJO' as const,
+      label: `Vencida • Hace ${dias} días`,
+      dias,
+      badgeClass: 'bg-rose-100 text-rose-900 border-rose-300',
+      dotClass: 'bg-rose-500',
+    };
+  }
 }
 
 export default function ProveedoresPage() {
@@ -20,7 +70,6 @@ export default function ProveedoresPage() {
   const [proveedorSeleccionado, setProveedorSeleccionado] = useState<Proveedor | null>(null);
   const [vista, setVista] = useState<"directorio" | "mapeo">("directorio");
 
-  // Estados del Modal Crear Proveedor
   const [mostrarModalCrear, setMostrarModalCrear] = useState(false);
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [nuevoCuit, setNuevoCuit] = useState("");
@@ -29,7 +78,6 @@ export default function ProveedoresPage() {
   const [nuevoTelefono, setNuevoTelefono] = useState("");
   const [creandoProveedor, setCreandoProveedor] = useState(false);
 
-  // Estados del Mapeador (PANT-04)
   const [archivo, setArchivo] = useState<File | null>(null);
   const [filaInicio, setFilaInicio] = useState(2);
   const [colDescripcion, setColDescripcion] = useState("B");
@@ -38,7 +86,6 @@ export default function ProveedoresPage() {
   const [guardandoMapeo, setGuardandoMapeo] = useState(false);
   const [cargandoPreview, setCargandoPreview] = useState(false);
 
-  // Matriz de filas reales devueltas por el backend al subir archivo
   const [filasRaw, setFilasRaw] = useState<any[][]>([]);
 
   useEffect(() => {
@@ -209,6 +256,7 @@ export default function ProveedoresPage() {
         if (resUpload.ok) {
           const dataUpload = await resUpload.json();
           alert(`¡Lista procesada con éxito! Se guardaron ${dataUpload.totalLeidos} productos en la base de datos.`);
+          fetchProveedores();
         } else {
           const errUpload = await resUpload.json();
           throw new Error(errUpload.error || "Error al procesar el archivo Excel.");
@@ -229,16 +277,25 @@ export default function ProveedoresPage() {
     }
   };
 
-  const proveedoresFiltrados = proveedores.filter((p) =>
-    p.nombre.toLowerCase().includes(busqueda.toLowerCase())
-  );
+  const proveedoresFiltrados = proveedores.filter((p) => {
+    const coincideBusqueda =
+      p.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+      (p.cuit && p.cuit.includes(busqueda));
+
+    const ultimaFecha = p.listas && p.listas.length > 0 ? p.listas[0].fechaCarga : undefined;
+    const semaforo = obtenerSemaforoVigencia(ultimaFecha);
+
+    if (filtroEstado === "Vigentes") return coincideBusqueda && semaforo.color !== "ROJO" && semaforo.color !== "GRIS";
+    if (filtroEstado === "Vencidos") return coincideBusqueda && semaforo.color === "ROJO";
+    return coincideBusqueda;
+  });
 
   const maxCols = filasRaw.reduce((max, f) => Math.max(max, f.length), 0);
   const letrasColumnas = Array.from({ length: Math.max(maxCols, 4) }, (_, i) => String.fromCharCode(65 + i));
 
   return (
     <div className="p-8 max-w-7xl mx-auto bg-gray-50 text-gray-900 min-h-screen">
-      {/* VISTA 1: DIRECTORIO DE PROVEEDORES (PANT-05) */}
+      {/* VISTA 1: DIRECTORIO DE PROVEEDORES */}
       {vista === "directorio" && (
         <>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -266,13 +323,13 @@ export default function ProveedoresPage() {
               />
             </div>
             <div className="flex gap-2 w-full md:w-auto">
-              <button onClick={() => setFiltroEstado("Todos")} className={`px-4 py-2 rounded-lg text-sm font-medium border ${filtroEstado === "Todos" ? "border-emerald-600 text-emerald-700 bg-emerald-50" : "border-gray-200 text-gray-600 bg-white"}`}>
+              <button onClick={() => setFiltroEstado("Todos")} className={`px-4 py-2 rounded-lg text-sm font-medium border cursor-pointer ${filtroEstado === "Todos" ? "border-emerald-600 text-emerald-700 bg-emerald-50" : "border-gray-200 text-gray-600 bg-white"}`}>
                 Todos ({proveedores.length})
               </button>
-              <button onClick={() => setFiltroEstado("Vigentes")} className={`px-4 py-2 rounded-lg text-sm font-medium border ${filtroEstado === "Vigentes" ? "border-emerald-600 text-emerald-700 bg-emerald-50" : "border-gray-200 text-gray-600 bg-white"}`}>
+              <button onClick={() => setFiltroEstado("Vigentes")} className={`px-4 py-2 rounded-lg text-sm font-medium border cursor-pointer ${filtroEstado === "Vigentes" ? "border-emerald-600 text-emerald-700 bg-emerald-50" : "border-gray-200 text-gray-600 bg-white"}`}>
                 Vigentes
               </button>
-              <button onClick={() => setFiltroEstado("Vencidos")} className={`px-4 py-2 rounded-lg text-sm font-medium border ${filtroEstado === "Vencidos" ? "border-emerald-600 text-emerald-700 bg-emerald-50" : "border-gray-200 text-gray-600 bg-white"}`}>
+              <button onClick={() => setFiltroEstado("Vencidos")} className={`px-4 py-2 rounded-lg text-sm font-medium border cursor-pointer ${filtroEstado === "Vencidos" ? "border-emerald-600 text-emerald-700 bg-emerald-50" : "border-gray-200 text-gray-600 bg-white"}`}>
                 Vencidos
               </button>
             </div>
@@ -288,12 +345,17 @@ export default function ProveedoresPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {proveedoresFiltrados.map((prov) => {
                 const iniciales = prov.nombre.substring(0, 2).toUpperCase();
+                const ultimaFecha = prov.listas && prov.listas.length > 0 ? prov.listas[0].fechaCarga : undefined;
+                const semaforo = obtenerSemaforoVigencia(ultimaFecha);
+
                 return (
                   <div key={prov.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 flex flex-col justify-between">
                     <div>
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-full bg-emerald-500 text-white font-bold flex items-center justify-center text-sm">
+                          <div className={`w-10 h-10 rounded-full text-white font-bold flex items-center justify-center text-sm shadow-xs ${
+                            semaforo.color === 'ROJO' ? 'bg-rose-500' : semaforo.color === 'AMARILLO' ? 'bg-amber-500' : semaforo.color === 'GRIS' ? 'bg-gray-400' : 'bg-emerald-500'
+                          }`}>
                             {iniciales}
                           </div>
                           <div>
@@ -303,11 +365,22 @@ export default function ProveedoresPage() {
                         </div>
                       </div>
 
+                      {/* Fila de Estados: Semáforo a la izquierda | Mapeo a la derecha */}
                       <div className="flex justify-between items-center mb-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                          Vigente
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${semaforo.badgeClass}`}>
+                          <span className={`w-2 h-2 rounded-full ${semaforo.dotClass}`}></span>
+                          {semaforo.label}
                         </span>
-                        <span className="text-xs font-semibold text-gray-500">📦 Activo</span>
+
+                        {prov.mapeo ? (
+                          <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
+                            📦 Mapeado
+                          </span>
+                        ) : (
+                          <span className="text-xs font-bold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200 flex items-center gap-1">
+                            ⚠️ Precisa mapeo
+                          </span>
+                        )}
                       </div>
 
                       <div className="space-y-1.5 text-xs text-gray-600 mb-6 border-t border-gray-100 pt-3">
@@ -443,7 +516,7 @@ export default function ProveedoresPage() {
         </div>
       )}
 
-      {/* VISTA 2: IMPORTADOR Y MAPEADOR DE CATÁLOGOS (PANT-04) */}
+      {/* VISTA 2: IMPORTADOR Y MAPEADOR DE CATÁLOGOS */}
       {vista === "mapeo" && proveedorSeleccionado && (
         <div className="space-y-6">
           <div className="flex justify-between items-center">

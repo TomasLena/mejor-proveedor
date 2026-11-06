@@ -28,17 +28,14 @@ export default function RootLayout({
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      {/* Mantenemos el min-h-full, pero agregamos el fondo base */}
-      <body className="min-h-full flex bg-slate-50">
-        
-        {/* El menú lateral fijo a la izquierda */}
+      <body className="min-h-screen flex bg-slate-50 text-slate-900">
+        {/* Menú lateral fijo a la izquierda */}
         <Sidebar />
         
-        {/* Contenido principal empujado 64 unidades (256px) para no quedar atrás del Sidebar */}
-        <div className="pl-64 w-full min-h-screen bg-slate-950 text-slate-100">
+        {/* Área de contenido principal con fondo claro y texto oscuro */}
+        <div className="pl-64 w-full min-h-screen bg-slate-50 text-slate-900">
           {children}
         </div>
-        
       </body>
     </html>
   );

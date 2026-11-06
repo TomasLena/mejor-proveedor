@@ -19,11 +19,22 @@ export interface CrearProveedorDTO {
 
     export class ProveedorService {
     static async obtenerTodos() {
-        return prisma.proveedor.findMany({
-        include: { mapeo: true },
-        orderBy: { nombre: 'asc' },
+        const proveedores = await prisma.proveedor.findMany({
+        include: {
+            mapeo: true, 
+            listas: {
+            orderBy: { fechaCarga: 'desc' },
+            take: 1,
+            },
+        },
+        orderBy: {
+            nombre: 'asc',
+        },
         });
+
+        return proveedores;
     }
+
 
     static async crearProveedor(data: CrearProveedorDTO) {
         return prisma.proveedor.create({ data });

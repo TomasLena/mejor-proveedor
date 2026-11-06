@@ -108,3 +108,18 @@ export async function cargarListaExcel(proveedorId: string, archivo: File): Prom
     }
     return res.json();
 }
+
+export async function crearPedidoAPI(total: number, items: { productoId: string; cantidad: number; precio: number }[]) {
+    const res = await fetch(`${API_URL}/pedidos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ total, items }),
+    });
+
+    if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al generar el pedido');
+    }
+
+    return res.json();
+}

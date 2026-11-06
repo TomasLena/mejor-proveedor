@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { obtenerCantidadUnidades, calcularPrecioUnitario } from '../utils/bulto.util';
 
 const prisma = new PrismaClient();
 
@@ -99,12 +100,16 @@ function normalizarTexto(str: string): string {
         if (diasAntiguedad > 60) semaforo = 'ROJO';
         else if (diasAntiguedad > 30) semaforo = 'AMARILLO';
 
+        const cantidadBulto = obtenerCantidadUnidades(p.descripcion, p.bulto);
+        const precioUnitario = calcularPrecioUnitario(p.precio, cantidadBulto);
+
         return {
             id: p.id,
             descripcion: descripcionCanonica, 
             descripcionOriginal: p.descripcion, 
             precio: p.precio,
-            bulto: p.bulto,
+            bulto: cantidadBulto,
+            precioUnitario: precioUnitario,
             fechaCarga: p.listaPrecio.fechaCarga,
             diasAntiguedad,
             semaforo,
