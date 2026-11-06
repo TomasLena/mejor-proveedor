@@ -6,6 +6,7 @@ import proveedorRoutes from './routes/proveedor.routes';
 import comparadorRoutes from './routes/comparador.routes';
 import pedidosRoutes from './routes/pedidos.routes';
 import productoRoutes from './routes/producto.routes';
+import dashboardRoutes from './routes/dashboard.routes';
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ app.use('/api/proveedores', proveedorRoutes);
 app.use('/api/pedidos', pedidosRoutes);
 app.use('/api/productos', productoRoutes);
 app.use('/api/comparador', comparadorRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 app.listen(PORT, () => {
 console.log(`🚀 Backend ejecutándose en http://localhost:${PORT}`);
