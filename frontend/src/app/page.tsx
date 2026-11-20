@@ -224,7 +224,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-xs mb-8">
         <div className="flex justify-between items-center mb-4">
           <div>
-            <h3 className="font-bold text-gray-900 text-sm">Rendimiento del Motor de Homologación (RF06.3)</h3>
+            <h3 className="font-bold text-gray-900 text-sm">Rendimiento del Motor de Homologación</h3>
             <p className="text-xs text-gray-500 mt-0.5">Métrica de eficiencia entre auto-matching (Levenshtein + RegEx) e intervención manual.</p>
           </div>
           <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">

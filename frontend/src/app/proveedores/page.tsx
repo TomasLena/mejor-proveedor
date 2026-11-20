@@ -80,9 +80,9 @@ export default function ProveedoresPage() {
 
   const [archivo, setArchivo] = useState<File | null>(null);
   const [filaInicio, setFilaInicio] = useState(2);
-  const [colDescripcion, setColDescripcion] = useState("B");
-  const [colPrecio, setColPrecio] = useState("C");
-  const [colBulto, setColBulto] = useState("D");
+  const [colDescripcion, setColDescripcion] = useState("");
+  const [colPrecio, setColPrecio] = useState("");
+  const [colBulto, setColBulto] = useState("");
   const [guardandoMapeo, setGuardandoMapeo] = useState(false);
   const [cargandoPreview, setCargandoPreview] = useState(false);
 
@@ -173,6 +173,10 @@ export default function ProveedoresPage() {
     setProveedorSeleccionado(prov);
     setArchivo(null);
     setFilasRaw([]);
+    setColDescripcion(prov.mapeo?.colDescripcion || "");
+    setColPrecio(prov.mapeo?.colPrecio || "");
+    setColBulto((prov.mapeo as any)?.colBulto || "");
+    setFilaInicio((prov.mapeo as any)?.filaInicioData || 2);
     setVista("mapeo");
   };
 
@@ -650,6 +654,10 @@ export default function ProveedoresPage() {
                               onDrop={(e) => {
                                 e.preventDefault();
                                 const fieldType = e.dataTransfer.getData("fieldType");
+                                if (colDescripcion === letra && fieldType !== "DESCRIPCION") setColDescripcion("");
+                                if (colPrecio === letra && fieldType !== "PRECIO") setColPrecio("");
+                                if (colBulto === letra && fieldType !== "BULTO") setColBulto("");
+
                                 if (fieldType === "DESCRIPCION") setColDescripcion(letra);
                                 if (fieldType === "PRECIO") setColPrecio(letra);
                                 if (fieldType === "BULTO") setColBulto(letra);

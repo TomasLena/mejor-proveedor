@@ -184,17 +184,22 @@ export default function ComparativasPage() {
   }, [resultadosComparacion]);
 
   const filasMatriz = useMemo(() => {
-    const mapa = new Map<string, { [prov: string]: InfoPrecioProveedor }>();
+    const mapa = new Map<string, { descripcionMostrar: string; precios: { [prov: string]: InfoPrecioProveedor } }>();
 
     resultadosComparacion.forEach((item) => {
       if (!item.proveedor) return;
-      const desc = item.descripcion;
+      const descLimpia = item.descripcion.replace(/\s+/g, ' ').trim();
+      const claveGrupo = descLimpia.toLowerCase();
+
       const bultoVal = item.bulto && item.bulto > 1 ? item.bulto : 1;
       const unitarioVal = item.precioUnitario ?? (item.precio / bultoVal);
 
-      if (!mapa.has(desc)) mapa.set(desc, {});
+      if (!mapa.has(claveGrupo)) {
+        mapa.set(claveGrupo, { descripcionMostrar: descLimpia, precios: {} });
+      }
 
-      const precios = mapa.get(desc)!;
+      const grupo = mapa.get(claveGrupo)!;
+      const precios = grupo.precios;
       const actual = precios[item.proveedor.nombre];
 
       const comparadorActual = verPrecioUnitario
@@ -218,7 +223,7 @@ export default function ComparativasPage() {
 
     const filas: FilaMatriz[] = [];
 
-    mapa.forEach((preciosProv, descripcion) => {
+    mapa.forEach(({ descripcionMostrar, precios: preciosProv }) => {
       const provs = Object.keys(preciosProv);
       let mejorPrecio = Infinity;
       let mejorProveedor = '';
@@ -246,7 +251,7 @@ export default function ComparativasPage() {
       });
 
       filas.push({
-        descripcion,
+        descripcion: descripcionMostrar,
         preciosPorProveedor: preciosProv,
         mejorPrecio: mejorPrecio === Infinity ? 0 : mejorPrecio,
         mejorProveedor,

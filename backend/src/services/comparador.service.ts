@@ -13,6 +13,14 @@ function normalizarTexto(str: string): string {
     .trim();
 }
 
+function claveExacta(str: string): string {
+  return str.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function limpiarEspacios(str: string): string {
+  return str.replace(/\s+/g, ' ').trim();
+}
+
 function extraerEmpaque(str: string): string | null {
   const match = str.match(/(?:x\d+|\d+(?:\s?x\s?\d+)?|\d+(?:g|gr|ml|cc|cm|mm))/i);
   return match ? match[0].replace(/\s/g, '').toLowerCase() : null;
@@ -29,9 +37,9 @@ function calcularSimilitudLevenshtein(a: string, b: string): number {
         matrix[i][j] = matrix[i - 1][j - 1];
       } else {
         matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1, // Sustitución
-          matrix[i][j - 1] + 1,     // Inserción
-          matrix[i - 1][j] + 1      // Eliminación
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
         );
       }
     }
@@ -44,8 +52,9 @@ function calcularSimilitudLevenshtein(a: string, b: string): number {
 
 export class ComparadorService {
   static async buscarYComparar(query: string) {
-    // 1. Asegurar que los Auto-Matches de >= 85% estén procesados en la BD
-    await ComparadorService.obtenerPendientes();
+    // 1. Procesar auto-matches (>= 85%) y obtener los IDs que siguen pendientes de revisión manual
+    const pendientes = await ComparadorService.obtenerPendientes();
+    const idsPendientes = new Set(pendientes.map((p) => p.id));
 
     if (!query || query.trim().length === 0) return [];
 
@@ -55,11 +64,13 @@ export class ComparadorService {
 
     if (palabrasClave.length === 0) return [];
 
-    // 2. Cargar equivalencias y crear un mapa insensible a mayúsculas/minúsculas
-    const equivalencias = await prisma.equivalencia.findMany();
+    // 2. Cargar equivalencias ordenadas por fecha (la decisión más reciente pisa a las anteriores)
+    const equivalencias = await prisma.equivalencia.findMany({
+      orderBy: { createdAt: 'asc' },
+    });
     const mapaEquivalencias = new Map<string, string>();
     equivalencias.forEach((eq) => {
-      mapaEquivalencias.set(eq.descripcionProveedor.trim().toLowerCase(), eq.descripcionMaster);
+      mapaEquivalencias.set(claveExacta(eq.descripcionProveedor), limpiarEspacios(eq.descripcionMaster));
     });
 
     const descripcionesHomologadasCoincidentes = equivalencias
@@ -74,7 +85,7 @@ export class ComparadorService {
           ...palabrasClave.map((palabra) => ({
             descripcion: { contains: palabra, mode: 'insensitive' as const },
           })),
-          { descripcion: { in: descripcionesHomologadasCoincidentes } },
+          { descripcion: { in: descripcionesHomologadasCoincidentes, mode: 'insensitive' as const } },
         ],
       },
       include: {
@@ -85,10 +96,11 @@ export class ComparadorService {
     const ahora = new Date();
 
     const productosEvaluados = productosBD
+      // Ocultar del comparador todo producto que esté esperando decisión en Homologación Manual
+      .filter((p) => !idsPendientes.has(p.id))
       .map((p) => {
-        // Buscar equivalencia usando la versión normalizada en minúsculas
-        const descripcionCanonica = 
-          mapaEquivalencias.get(p.descripcion.trim().toLowerCase()) || p.descripcion;
+        const descripcionCanonica =
+          mapaEquivalencias.get(claveExacta(p.descripcion)) || limpiarEspacios(p.descripcion);
 
         const descripcionNormalizada = normalizarTexto(descripcionCanonica);
         const empaqueProducto = extraerEmpaque(descripcionCanonica);
@@ -112,11 +124,11 @@ export class ComparadorService {
 
         return {
           id: p.id,
-          descripcion: descripcionCanonica, 
-          descripcionOriginal: p.descripcion, 
+          descripcion: descripcionCanonica,
+          descripcionOriginal: p.descripcion,
           precio: p.precio,
           bulto: cantidadBulto,
-          precioUnitario: precioUnitario,
+          precioUnitario,
           fechaCarga: p.listaPrecio.fechaCarga,
           diasAntiguedad,
           semaforo,
@@ -135,7 +147,9 @@ export class ComparadorService {
 
   static async obtenerPendientes() {
     const equivalencias = await prisma.equivalencia.findMany();
-    const descripcionesHomologadas = new Set(equivalencias.map((e) => e.descripcionProveedor));
+    const descripcionesResueltas = new Set(
+      equivalencias.map((e) => claveExacta(e.descripcionProveedor))
+    );
 
     const productosBD = await prisma.producto.findMany({
       include: {
@@ -154,7 +168,9 @@ export class ComparadorService {
     const productosMaestros = productosBD.filter((p) => p.listaPrecio.proveedor.id === proveedorMaestroId);
 
     const productosSecundarios = productosBD.filter(
-      (p) => p.listaPrecio.proveedor.id !== proveedorMaestroId && !descripcionesHomologadas.has(p.descripcion)
+      (p) =>
+        p.listaPrecio.proveedor.id !== proveedorMaestroId &&
+        !descripcionesResueltas.has(claveExacta(p.descripcion))
     );
 
     const pendientes: any[] = [];
@@ -183,25 +199,22 @@ export class ComparadorService {
       }
 
       if (mejorCandidato) {
-        // AUTO-MATCH: Persistir automáticamente las coincidencias de >= 85% en PostgreSQL
         if (mejorSimilitud >= 85) {
           await prisma.equivalencia.upsert({
-            where: { descripcionProveedor: prodSec.descripcion.trim() },
-            update: { descripcionMaster: mejorCandidato.descripcion.trim() },
+            where: { descripcionProveedor: limpiarEspacios(prodSec.descripcion) },
+            update: { descripcionMaster: limpiarEspacios(mejorCandidato.descripcion) },
             create: {
-              descripcionProveedor: prodSec.descripcion.trim(),
-              descripcionMaster: mejorCandidato.descripcion.trim(),
+              descripcionProveedor: limpiarEspacios(prodSec.descripcion),
+              descripcionMaster: limpiarEspacios(mejorCandidato.descripcion),
             },
           });
-        } 
-        // PENDIENTE MANUAL: Dejar para la consola de resolución (50% a 84%)
-        else if (mejorSimilitud >= 50 && mejorSimilitud <= 84) {
+        } else if (mejorSimilitud >= 50 && mejorSimilitud <= 84) {
           pendientes.push({
             id: prodSec.id,
-            descripcionProveedor: prodSec.descripcion,
+            descripcionProveedor: limpiarEspacios(prodSec.descripcion),
             codigoProveedor: prodSec.id.substring(0, 8).toUpperCase(),
             proveedorNombre: prodSec.listaPrecio.proveedor.nombre,
-            descripcionMaster: mejorCandidato.descripcion,
+            descripcionMaster: limpiarEspacios(mejorCandidato.descripcion),
             skuMaster: `SKU-${mejorCandidato.id.substring(0, 4).toUpperCase()}`,
             rubro: 'General',
             similitud: Math.round(mejorSimilitud),
@@ -215,23 +228,28 @@ export class ComparadorService {
   }
 
   static async confirmarMatch(descripcionProveedor: string, descripcionMaster: string) {
+    const provLimpio = limpiarEspacios(descripcionProveedor);
+    const masterLimpio = limpiarEspacios(descripcionMaster);
+
     return await prisma.equivalencia.upsert({
-      where: { descripcionProveedor: descripcionProveedor.trim() },
-      update: { descripcionMaster: descripcionMaster.trim() },
+      where: { descripcionProveedor: provLimpio },
+      update: { descripcionMaster: masterLimpio },
       create: {
-        descripcionProveedor: descripcionProveedor.trim(),
-        descripcionMaster: descripcionMaster.trim(),
+        descripcionProveedor: provLimpio,
+        descripcionMaster: masterLimpio,
       },
     });
   }
 
   static async descartarMatch(descripcionProveedor: string) {
+    const provLimpio = limpiarEspacios(descripcionProveedor);
+
     return await prisma.equivalencia.upsert({
-      where: { descripcionProveedor: descripcionProveedor.trim() },
-      update: { descripcionMaster: descripcionProveedor.trim() },
+      where: { descripcionProveedor: provLimpio },
+      update: { descripcionMaster: provLimpio },
       create: {
-        descripcionProveedor: descripcionProveedor.trim(),
-        descripcionMaster: descripcionProveedor.trim(),
+        descripcionProveedor: provLimpio,
+        descripcionMaster: provLimpio,
       },
     });
   }
